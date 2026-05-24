@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 import numpy as np
 import open3d as o3d
 import matplotlib
-
+from scipy.ndimage import zoom  # for volume upsampling
 
 sys.path.append("./")
 from r2_gaussian.arguments import ModelParams
@@ -19,17 +19,27 @@ from r2_gaussian.utils.general_utils import t2a
 def main(dataset: ModelParams, args):
     # Set up dataset
     scene = Scene(dataset, shuffle=False)
-
     scanner_cfg = scene.scanner_cfg
 
+    # Load volume and optionally upsample
+    vol = np.load(osp.join(dataset.source_path, "vol_gt.npy"))
+    if args.upsample_factor > 1:
+        vol = zoom(vol, args.upsample_factor, order=1)  # linear interpolation
+
+    # Create mesh using marching cubes
     vol_mesh = create_vol_mesh(
-        np.load(osp.join(dataset.source_path, "vol_gt.npy")),
+        vol,
         np.array(scanner_cfg["offOrigin"]),
         np.array(scanner_cfg["dVoxel"]),
         np.eye(3),
         level=args.mc_thresh,
     )
 
+    # Optional: densify mesh with loop subdivision
+    if args.subdivide > 0:
+        vol_mesh = vol_mesh.subdivide_loop(number_of_iterations=args.subdivide)
+
+    # Coordinate frame and bounding boxes
     vol_coord = o3d.geometry.TriangleMesh.create_coordinate_frame(
         size=scanner_cfg["sVoxel"][0] / 2,
         origin=scanner_cfg["offOrigin"],
@@ -46,13 +56,12 @@ def main(dataset: ModelParams, args):
     )
     unit_bbox.color = np.array([0, 0, 1])
 
+    # Cameras
     cams = []
     cmap = matplotlib.colormaps["viridis"]
     cam_scale = args.cam_scale
     n_proj = len(scene.train_cameras)
     for i_proj, camera in enumerate(scene.train_cameras):
-        proj_name = camera.image_name
-        proj_id = i_proj
         proj = t2a(camera.original_image)[0]
         K = np.array(
             [
@@ -64,8 +73,6 @@ def main(dataset: ModelParams, args):
         w2c = np.eye(4)
         w2c[:3, :3] = t2a(camera.R.T)
         w2c[:3, 3] = t2a(camera.T)
-        c2w = np.linalg.inv(w2c)
-        DSO = np.linalg.norm(c2w[:3, 3] - np.array(scanner_cfg["offOrigin"]))
         cam = create_textured_camera(
             K,
             w2c,
@@ -73,7 +80,7 @@ def main(dataset: ModelParams, args):
             cmap(i_proj / n_proj)[:3],
             proj.shape[1],
             proj.shape[0],
-            f"{proj_id:03d}",
+            f"{i_proj:03d}",
             proj,
         )
         cams += cam
@@ -83,11 +90,15 @@ def main(dataset: ModelParams, args):
 
 
 if __name__ == "__main__":
-    # fmt: off
-    # Set up command line argument parser
-    parser = ArgumentParser(description="Training script parameters")
+    parser = ArgumentParser(description="Visualization script parameters")
     lp = ModelParams(parser)
-    parser.add_argument("--mc_thresh", type=float, default=0.5, help="Threshold of marching cubes for mesh extraction from volume.")
-    parser.add_argument("--cam_scale", type=float, default=1.0, help="Size of camera model for visualization")
+    parser.add_argument("--mc_thresh", type=float, default=0.5,
+                        help="Threshold for marching cubes; lower = denser mesh")
+    parser.add_argument("--cam_scale", type=float, default=1.0,
+                        help="Size of camera model for visualization")
+    parser.add_argument("--upsample_factor", type=int, default=1,
+                        help="Upsample factor for volume before meshing")
+    parser.add_argument("--subdivide", type=int, default=0,
+                        help="Number of Open3D loop subdivisions to densify mesh")
     args = parser.parse_args(sys.argv[1:])
     main(lp.extract(args), args)

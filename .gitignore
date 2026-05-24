@@ -11,3 +11,10 @@ volume_raw
 FIPS_raw
 FIPS_processed
 other_scripts
+
+# large binaries / runtime data (kept alongside repo, not in git)
+viewers/
+spec.txt
+data_generator/synthetic_dataset/Brain2_PNG/
+data_generator/synthetic_dataset/Brain2_PNG.npy
+data_generator/synthetic_dataset/cone_ntrain_75_angle_360/
