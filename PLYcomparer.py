@@ -99,7 +99,7 @@ def compare_ply_files(file1, file2, tolerance=1e-6):
 
 # --- Example usage ---
 file1 = Path(__file__).parent / "output/Brain2_training/point_cloud/iteration_30000/point_cloud.ply"
-file2 = r"C:\Users\Mushfiq\Desktop\Gaussian\gaussian-splatting\output\room\input.ply"  # TODO: update this path if the external Gaussian folder has moved
+file2 = Path(__file__).resolve().parent.parent / "gaussian-splatting" / "output" / "room" / "input.ply"
 
 comparison_report = compare_ply_files(file1, file2)
 for k, v in comparison_report.items():
